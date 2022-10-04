@@ -15,7 +15,9 @@ namespace FrukostFrallanCLI
 		private static string tokenGenUrl = "https://www.wix.com/installer/install?appId=27b14e39-c86f-49b0-b8b5-856238332649&redirectUrl=https://example.com";
 		private static string clientId = "27b14e39-c86f-49b0-b8b5-856238332649";
 		private static string clientSecret = "b265fee0-475c-41c5-8398-8557353f4503";
-		private static string token = "OAUTH2.eyJraWQiOiJWUTQwMVRlWiIsImFsZyI6IkhTMjU2In0.eyJkYXRhIjoie1wiYXBwSWRcIjpcIjI3YjE0ZTM5LWM4NmYtNDliMC1iOGI1LTg1NjIzODMzMjY0OVwiLFwiaW5zdGFuY2VJZFwiOlwiNDA0YjkxY2UtOWMwNy00OTM5LWExNTktMzBhMjMwZjg4Yjg4XCIsXCJzY29wZVwiOltcIlNDT1BFLkRDLVNUT1JFUy1NRUdBLk1BTkFHRS1TVE9SRVNcIixcIlNDT1BFLkRDLk1BTkFHRS1ZT1VSLUFQUFwiXX0iLCJpYXQiOjE2NjQ3OTQyMzMsImV4cCI6MTY2NDc5NDgzM30.Gn5pyGFnCOMIwvSGEsgcoMQDo2m7GeF5Ahd6uqKJxnw";
+		private static string token = string.Empty;
+		private static string accessTokenPath = $"{RootFolder}\\access.token";
+		private static string refreshTokenPath = $"{RootFolder}\\refresh.token";
 		private static AuthorizationData? AuthorizationData;
 		private static DateTime NextSaturday = default(DateTime);
 		private static int Week = 0;
@@ -45,16 +47,28 @@ namespace FrukostFrallanCLI
 			switch (command)
 			{
 				case "-prep":
-					if (args.Length <= 1)
-					{
-						Console.WriteLine($"Invalid args. Missing token. ex: .\\FrukostfrallanCLI.exe -prep OAUTH2.eyJ...");
-						return;
-					}
+					//if (args.Length <= 1)
+					//{
+					//	Console.WriteLine($"Invalid args. Missing token. ex: .\\FrukostfrallanCLI.exe -prep OAUTH2.eyJ...");
+					//	return;
+					//}
 
-					token = args[1].ToString();
+					if (args.Length > 1 && args[1].StartsWith("OAUTH2."))
+					{
+						token = args[1].ToString();
+					}//OAUTH2.
+					 //if (args.Any("OAUTH2.".StartsWith))
+					 //{
+					 //	token = args[1].ToString();
+					 //}
 
 					if (args.Any("-nodownload".Contains)) {
 						NoDownload = true;
+					}
+
+					if (args.Any("-verbose".Contains))
+					{
+						PrintVerbose = true;
 					}
 
 					PrepDelivery();
@@ -64,6 +78,10 @@ namespace FrukostFrallanCLI
 					if (args.Any("-noprintpdf".Contains))
 					{
 						NoPrintPdf = true;
+					}
+					if (args.Any("-verbose".Contains))
+					{
+						PrintVerbose = true;
 					}
 					SortDelivery();
 					break;
@@ -207,10 +225,19 @@ namespace FrukostFrallanCLI
 			DataFolder = $"{WeekFolder}\\data";
 			PrintVerboseConsole($"DataFolder: {DataFolder}");
 
+			accessTokenPath = $"{RootFolder}\\access.token";
+			refreshTokenPath = $"{RootFolder}\\refresh.token";
 		}
 
 		private static void Authorize()
 		{
+			if (string.IsNullOrEmpty(token))
+			{
+				token = LoadFileContent(accessTokenPath);
+			}
+
+			PrintVerboseConsole($"AccessToken: {token}");
+
 			var url = "https://www.wix.com/oauth/access";
 
 			var client = new RestClient(url);
@@ -238,14 +265,63 @@ namespace FrukostFrallanCLI
 				if (AuthorizationData != null)
 				{
 					PrintVerboseConsole("Got access_token"); // + AuthorizationData.AccessToken);
-														   //Console.WriteLine("refresh_token: " + AuthorizationData.RefreshToken);
+															 //Console.WriteLine("refresh_token: " + AuthorizationData.RefreshToken);
+					CreateFile(accessTokenPath, AuthorizationData.AccessToken);
+					CreateFile(refreshTokenPath, AuthorizationData.RefreshToken);
+				}
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"Access denied."); // Ex: {ex.Message}");
+													  //Console.WriteLine($"{tokenGenUrl}"); // Ex: {ex.Message}");
+				RefreshToken();
+				return;
+			}
+
+		}
+
+		private static void RefreshToken()
+		{
+			var refreshToken = LoadFileContent(refreshTokenPath);
+
+
+			PrintVerboseConsole($"RefreshToken: {refreshToken}");
+
+			var url = "https://www.wix.com/oauth/access";
+
+			var client = new RestClient(url);
+			client.AddDefaultHeader("Accept", "application/json;");
+
+			var body = new RefreshRequestBody { GrantType = "refresh_token", ClientId = clientId, ClientSecret = clientSecret, RefreshToken = refreshToken };
+
+			var request = new RestRequest(url);
+			request.AddStringBody(JsonConvert.SerializeObject(body), "application/json");
+			request.Method = Method.Post;
+
+			PrintVerboseConsole("Will try to refresh token");
+			try
+			{
+				var response = client.Post(request);
+
+				if (response == null || response.Content == null)
+				{
+					Console.WriteLine("Access denied");
+					return;
+				}
+
+				AuthorizationData = JsonConvert.DeserializeObject<AuthorizationData>(response.Content.ToString());
+
+				if (AuthorizationData != null)
+				{
+					PrintVerboseConsole("Refreshed tokens"); // + AuthorizationData.AccessToken);
+					CreateFile(accessTokenPath, AuthorizationData.AccessToken);
+					CreateFile(refreshTokenPath, AuthorizationData.RefreshToken);										 //Console.WriteLine("refresh_token: " + AuthorizationData.RefreshToken);
 				}
 			}
 			catch (Exception ex)
 			{
 				Console.WriteLine($"Access denied. Rerun with new token."); // Ex: {ex.Message}");
 				Console.WriteLine($"{tokenGenUrl}"); // Ex: {ex.Message}");
-				OpenUrl(tokenGenUrl);
 				return;
 			}
 
@@ -331,9 +407,26 @@ namespace FrukostFrallanCLI
 				PrintVerboseConsole($"Deleted file {path}.");
 			}
 
+			CreateFile(path, content);
+		}
+
+		private static void CreateFile(string path, string content)
+		{
 			File.WriteAllText(path, content);
 
 			PrintVerboseConsole($"Created file {path}");
+		}
+
+		private static string LoadFileContent(string path)
+		{
+			string content = string.Empty;
+
+			if (File.Exists(path))
+			{
+				content = File.ReadAllText(path);
+			}
+
+			return content;
 		}
 
 		private static DateTime GetNextSaturday()
@@ -443,9 +536,16 @@ namespace FrukostFrallanCLI
 
 				var path = $"{PackingSlipFolder}\\{order.Number}.pdf";
 
-				var download = DownloadFileAsync(responsePackingSlip.Link, path);
-				// Wait for the delay to complete.
-				download.Wait();
+				if (!File.Exists(path))
+				{
+					var download = DownloadFileAsync(responsePackingSlip.Link, path);
+					// Wait for the delay to complete.
+					download.Wait();
+				}
+				else
+				{
+					PrintVerboseConsole($"File {path} already exist");
+				}
 			}
 			Console.Write(".");
 		}
@@ -733,6 +833,29 @@ namespace FrukostFrallanCLI
 
 		[JsonProperty(PropertyName = "code")]
 		public string Code { get; set; }
+	}
+
+	public class RefreshRequestBody
+	{
+		public RefreshRequestBody()
+		{
+			GrantType = string.Empty;
+			ClientId = string.Empty;
+			ClientSecret = string.Empty;
+			RefreshToken = string.Empty;
+		}
+
+		[JsonProperty(PropertyName = "grant_type")]
+		public string GrantType { get; set; }
+
+		[JsonProperty(PropertyName = "client_id")]
+		public string ClientId { get; set; }
+
+		[JsonProperty(PropertyName = "client_secret")]
+		public string ClientSecret { get; set; }
+
+		[JsonProperty(PropertyName = "refresh_token")]
+		public string RefreshToken { get; set; }
 	}
 
 	public class AuthorizationData
