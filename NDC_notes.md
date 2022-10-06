@@ -1,4 +1,44 @@
-NDC 2022
+# NDC 2022
+
+## Day 1
+### Keynote: Managing the Burnout Burndown
+Tanken var att han skulle prata ihop med sin fru men hon var sjuk. Kontentan av deras prat vara att vi utvecklare välldigt enkelt bränner ut oss själva.   
+Det gäller att lära sig kropp och vad man själv skall göra för att motverka att bränna ut sig. Detta är ju svårt i och med att alla är olika. 
+
+- inte oroa sig för saker som troligen inte kommer hända. Fundera på hur ofta "det där" händer som du är orolig för.
+- Sov ordentligt
+- Träna. Gärna springa och styrketräna.
+- Tugga din mat ordentligt
+- Ta in nuet. Se dig omkring och ta in vad som händer. Fundera/reflektera 
+
+
+### Observable Web Applications - Todd Gardner
+Hur skall man kunna ha kontroll på hur din webapplikation mår och fungerar.  
+  
+Mindre webbapplikationer har lättare att ha kontroll än stora webbapplikationer som är omöjligt för en person att ha övergrippande kontroll.  
+
+Man bör ha bättre context information i sinna loggar. Detta för att man skall förstå vilken URL problemet uppstod. Vem är inloggad? etc.      
+
+Performance påverkar page-rank.  
+Google 
+* First Contentfull Paint (FCP)
+* First Input Delay (FID)
+* Largest Contentfull Page (LCP)
+* Cumulative Layout Shift (CLS)     
+https://developers.google.com/speed/docs/insights/v5/about
+
+Tips på hur man kan upptäka avvikelser enklare än :  
+* Meridian (för att se när den ändras).
+* Percentil 70 och 95
+* Current vs previous. Titta och se skillnaden emot tidigare period.
+
+Usage Analytics. Funnel. Abandons and complitions
+
+Analysera hur användare upplever hur det fungerar och ha Kpi. Se ex checkout 25% => 18%
+
+
+
+---------------------
 
 Eisenhover principen
 Epinova t-shirts
@@ -210,9 +250,4 @@ Analysera hur användare upplever hur det fungerar och ha Kpi. Se ex checkout 25
 
 
 
-Burnout
-Journal - inte oroa sig för saker som troligen inte kommer hända.
 
-Sleep, eat, tugga maten. Ta in nuet.
-
-Mycket är just det jag själv har kommit fram till under alla dessa år.
