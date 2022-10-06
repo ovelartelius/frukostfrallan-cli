@@ -2,6 +2,7 @@
 
 
 
+using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using RestSharp;
 using System.Diagnostics;
@@ -33,6 +34,14 @@ namespace FrukostFrallanCLI
 
 		static void Main(string[] args)
 		{
+			var builder = new ConfigurationBuilder()
+				   .AddJsonFile($"appsettings.json", true, true);
+
+			var config = builder.Build();
+			//clientId = config["ClientId"];
+			//clientSecret = config["ClientSecret"];
+			RootFolder = config["RootFolder"];
+
 			if (args.Length == 0)
 			{
 				Console.WriteLine($"Invalid args. -prep/-sort");
