@@ -208,8 +208,11 @@ namespace FrukostFrallanCLI
 			{
 				foreach (var order in sortOrders)
 				{
-					var pdfPath = $"{PackingSlipFolder}\\{order.Number}.pdf";
-					OpenUrl(pdfPath);
+					if (order.Number != 0)
+					{
+						var pdfPath = $"{PackingSlipFolder}\\{order.Number}.pdf";
+						OpenUrl(pdfPath);
+					}
 				}
 			}
 			else
@@ -648,14 +651,28 @@ namespace FrukostFrallanCLI
 				PrintVerboseConsole($"Deleted file {path}.");
 			}
 
+			var mapNumber = 1;
+
 			using (StreamWriter sw = File.CreateText(path))
 			{
-				sw.WriteLine("Map (1): XX min");
+				sw.WriteLine($"Map ({mapNumber}): XX min");
 				sw.WriteLine("https://www.google.com/maps/dir/Skälby+Gårds+väg+6,+Järfälla");
 
 				foreach (var order in orders)
 				{
-					sw.WriteLine($",+Järfälla/{order.ShippingInfo.ShipmentDetails.Address.AddressLine1}");
+					if (!string.IsNullOrEmpty(order.Id))
+					{
+						sw.WriteLine($",+Järfälla/{order.ShippingInfo.ShipmentDetails.Address.AddressLine1}");
+					}
+					else
+					{
+						mapNumber++;
+						sw.WriteLine($"");
+						sw.WriteLine($"");
+						sw.WriteLine($"Map ({mapNumber}): XX min");
+						sw.WriteLine("https://www.google.com/maps/dir/Skälby+Gårds+väg+6,+Järfälla");
+					}
+
 				}
 
 				PrintVerboseConsole($"Created file {path}");
@@ -673,14 +690,19 @@ namespace FrukostFrallanCLI
 				PrintVerboseConsole($"Deleted file {path}.");
 			}
 
-
 			using (StreamWriter sw = File.CreateText(path))
 			{
 				sw.WriteLine("");
 
 				foreach (var order in orders)
 				{
-					sw.WriteLine($"{order.Number}, {order.ShippingInfo.ShipmentDetails.Address.AddressLine1}, {order.ShippingInfo.ShipmentDetails.Address.ZipCode}");
+					if (order.Number == 0)
+					{
+						sw.WriteLine($"");
+					} else
+					{
+						sw.WriteLine($"{order.Number}, {order.ShippingInfo.ShipmentDetails.Address.AddressLine1}, {order.ShippingInfo.ShipmentDetails.Address.ZipCode}");
+					}
 				}
 
 				PrintVerboseConsole($"Created file {path}");
@@ -739,6 +761,7 @@ namespace FrukostFrallanCLI
 			HandlePostalArea(mapSortedOrders, orders, "17566");
 			HandlePostalArea(mapSortedOrders, orders, "17568");
 			HandlePostalArea(mapSortedOrders, orders, "17561");
+			HandlePostalArea(mapSortedOrders, orders); // the rest
 
 			if (mapSortedOrders.Count > 20)
 			{
@@ -760,6 +783,15 @@ namespace FrukostFrallanCLI
 					orders.Remove(postalAddress);
 					Console.Write(".");
 				}
+			}
+		}
+		private static void HandlePostalArea(List<Order> mapSortedOrders, List<Order> orders)
+		{
+			if (orders.Any())
+			{
+				mapSortedOrders.AddRange(orders);
+				orders.Clear();
+				Console.Write(".");
 			}
 		}
 
