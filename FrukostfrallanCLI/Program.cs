@@ -4,10 +4,12 @@
 
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using RestSharp;
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace FrukostFrallanCLI
 {
@@ -38,40 +40,31 @@ namespace FrukostFrallanCLI
 				   .AddJsonFile($"appsettings.json", true, true);
 
 			var config = builder.Build();
-			//clientId = config["ClientId"];
-			//clientSecret = config["ClientSecret"];
+			clientId = config["ClientId"];
+			clientSecret = config["ClientSecret"];
 			RootFolder = config["RootFolder"];
 
 			if (args.Length == 0)
 			{
-				Console.WriteLine($"Invalid args. -prep/-sort");
+				Console.WriteLine($"Invalid args. -prep/-sort/-close/-open");
 				return;
 			}
 
 			var command = args[0];
-
+			//RootFolder = @"F:\OneDrive\Dokument\Privat\Frukostfrallan";
 			SetDefaultValues();
-			CreateFolders();
 
 			switch (command)
 			{
 				case "-prep":
-					//if (args.Length <= 1)
-					//{
-					//	Console.WriteLine($"Invalid args. Missing token. ex: .\\FrukostfrallanCLI.exe -prep OAUTH2.eyJ...");
-					//	return;
-					//}
-
+					CreateFolders();
 					if (args.Length > 1 && args[1].StartsWith("OAUTH2."))
 					{
 						token = args[1].ToString();
-					}//OAUTH2.
-					 //if (args.Any("OAUTH2.".StartsWith))
-					 //{
-					 //	token = args[1].ToString();
-					 //}
+					}
 
-					if (args.Any("-nodownload".Contains)) {
+					if (args.Any("-nodownload".Contains))
+					{
 						NoDownload = true;
 					}
 
@@ -93,6 +86,22 @@ namespace FrukostFrallanCLI
 						PrintVerbose = true;
 					}
 					SortDelivery();
+					break;
+				case "-close":
+					if (args.Any("-verbose".Contains))
+					{
+						PrintVerbose = true;
+					}
+
+					CloseShop();
+					break;
+				case "-open":
+					if (args.Any("-verbose".Contains))
+					{
+						PrintVerbose = true;
+					}
+
+					OpenShop();
 					break;
 				default:
 					Console.WriteLine("ERROR: Invalid command");
@@ -223,6 +232,143 @@ namespace FrukostFrallanCLI
 			PrintVerboseConsole("--** Jobs done **--");
 		}
 
+		private static void CloseShop()
+		{
+			Console.WriteLine("Start closing shop");
+
+			Authorize();
+			GetCollections();
+			var inventoryItems = ListNoTrackedInventoryItems();
+			foreach (var inventoryItem in inventoryItems)
+			{
+				//PrintVerboseConsole($"inventoryItem {inventoryItem.Id} {inventoryItem.ProductId}");
+				var product = GetProduct(inventoryItem.ProductId);
+				//PrintVerboseConsole($"Product {product.Id} {product.Name} {product.Stock.InventoryStatus}");
+				//PrintVerboseConsole($"Product {product.Id} {product.Name}");
+
+				if (product.BakeryProduct)
+				{
+					UpdateInventoryItemInStock(product.Id, false);
+					PrintVerboseConsole($"Set {product.Id} {product.Name} out of stock");
+				}
+					
+			}
+			PrintVerboseConsole("Shop is now closed");
+
+			PrintVerboseConsole("--** Jobs done **--");
+		}
+
+		private static void OpenShop()
+		{
+			Console.WriteLine("Start open shop");
+
+			Authorize();
+			GetCollections();
+			var inventoryItems = ListNoTrackedInventoryItems();
+			foreach (var inventoryItem in inventoryItems)
+			{
+				var product = GetProduct(inventoryItem.ProductId);
+				if (product.BakeryProduct)
+				{
+					UpdateInventoryItemInStock(product.Id, true);
+					PrintVerboseConsole($"Set {product.Id} {product.Name} in stock");
+				}
+
+			}
+			PrintVerboseConsole("Shop is now open");
+
+			// Set all none fullfilled orders to fullfilled.
+			var orders = ListNotFullfilledOrders();
+			foreach (var order in orders)
+			{
+				UpdateOrderToFullfilled(order);
+			}
+			PrintVerboseConsole("All none fullfilled orders set to fullfilled");
+			//var order = GetOrder("db9202a5-03de-497b-92ca-e6a8e9e2d9fa");
+			//var order = GetOrder("814d5b09-585e-4b37-a338-0714b81e3961");
+			//UpdateOrderToFullfilled(order);
+
+			PrintVerboseConsole("--** Jobs done **--");
+		}
+
+		private static void UpdateInventoryItemInStock(string productId, bool inStock)
+		{
+			var url = $"https://www.wixapis.com/stores/v2/inventoryItems/product/{productId}";
+
+			var client = new RestClient(url);
+			client.AddDefaultHeader("Accept", "application/json;");
+			client.AddDefaultHeader("Authorization", AuthorizationData.AccessToken);
+
+			var request = new RestRequest();
+			var crappyJson = string.Empty;
+			if (inStock)
+			{
+				crappyJson = "{\"inventoryItem\": {\"trackQuantity\": false, \"variants\": [{ \"variantId\": \"00000000-0000-0000-0000-000000000000\",\"inStock\": true }] }}";
+			} else
+			{
+				crappyJson = "{\"inventoryItem\": {\"trackQuantity\": false, \"variants\": [{ \"variantId\": \"00000000-0000-0000-0000-000000000000\",\"inStock\": false }] }}";
+			}
+			PrintVerboseConsole(crappyJson);
+			request.AddStringBody(crappyJson, "application/json");
+			request.Method = Method.Patch;
+
+			PrintVerboseConsole("Will try to update inventoryItem");
+			var response = client.Patch(request);
+
+			if (response == null || response.StatusCode == HttpStatusCode.NotFound)
+			{
+				Console.WriteLine("No updated inventoryItem");
+			}
+			else
+			{
+				PrintVerboseConsole($"Set {productId} inStock {inStock}");
+			}
+		}
+
+		private static List<InventoryItem> ListNoTrackedInventoryItems()
+		{
+			var inventoryItems = new List<InventoryItem>();
+
+			var url = "https://www.wixapis.com/stores/v2/inventoryItems/query";
+
+			var client = new RestClient(url);
+			client.AddDefaultHeader("Accept", "application/json;");
+			client.AddDefaultHeader("Authorization", AuthorizationData.AccessToken);
+
+			var request = new RestRequest();
+			//var crappyJson = "{\"query\":{\"paging\":{\"limit\":100,\"offset\":0},\"filter\":\"{\\\"trackQuantity\\\": \\\"false\\\"}\"}}";
+			var crappyJson = "{\"query\":{\"paging\":{\"limit\":100,\"offset\":0},\"filter\":\"{}\"}}";
+			PrintVerboseConsole(crappyJson);
+			request.AddStringBody(crappyJson, "application/json");
+			request.Method = Method.Post;
+
+			PrintVerboseConsole("Will try to query inventoryItems");
+			//try
+			//{
+			var response = client.Post(request);
+
+
+
+			if (response == null || response.StatusCode == HttpStatusCode.NotFound)
+			{
+				Console.WriteLine("No inventoryItems");
+			}
+			else
+			{
+				PrintVerboseConsole(response.Content);
+
+				var responseInventoryItems = JsonConvert.DeserializeObject<InventoryQueryResult>(response.Content);
+				if (responseInventoryItems != null)
+				{
+					Console.WriteLine($"Found {responseInventoryItems.TotalResults} inventoryItems.");
+					var noneTracked = responseInventoryItems.InventoryItems.Where(x => x.TrackQuantity == false).ToList();
+					Console.WriteLine($"Found {noneTracked.Count} noneTracked inventoryItems.");
+					inventoryItems.AddRange(noneTracked);
+				}
+			}
+			return inventoryItems;
+		}
+
 		private static void SetDefaultValues()
 		{
 			NextSaturday = GetNextSaturday();
@@ -282,9 +428,15 @@ namespace FrukostFrallanCLI
 					CreateFile(refreshTokenPath, AuthorizationData.RefreshToken);
 				}
 			}
+			catch (DirectoryNotFoundException dirEx)
+			{
+				Console.WriteLine($"Could not create token files.");
+				Console.WriteLine(dirEx.Message);
+				return;
+			}
 			catch (Exception ex)
 			{
-				Console.WriteLine($"Access denied."); // Ex: {ex.Message}");
+				Console.WriteLine($"Access denied. Will try with refresh token."); // Ex: {ex.Message}");
 													  //Console.WriteLine($"{tokenGenUrl}"); // Ex: {ex.Message}");
 				RefreshToken();
 				return;
@@ -327,7 +479,7 @@ namespace FrukostFrallanCLI
 				{
 					PrintVerboseConsole("Refreshed tokens"); // + AuthorizationData.AccessToken);
 					CreateFile(accessTokenPath, AuthorizationData.AccessToken);
-					CreateFile(refreshTokenPath, AuthorizationData.RefreshToken);										 //Console.WriteLine("refresh_token: " + AuthorizationData.RefreshToken);
+					CreateFile(refreshTokenPath, AuthorizationData.RefreshToken);                                        //Console.WriteLine("refresh_token: " + AuthorizationData.RefreshToken);
 				}
 			}
 			catch (Exception ex)
@@ -387,7 +539,7 @@ namespace FrukostFrallanCLI
 			PrintVerboseConsole("Will try to query not fullfiled orders");
 			//try
 			//{
-				var response = client.Post(request);
+			var response = client.Post(request);
 
 
 
@@ -409,6 +561,49 @@ namespace FrukostFrallanCLI
 			return orders;
 		}
 
+		private static void UpdateOrderToFullfilled(Order order)
+		{
+			var url = $"https://www.wixapis.com/stores/v2/orders/{order.Id}/fulfillments";
+
+			var client = new RestClient(url);
+			client.AddDefaultHeader("Accept", "application/json;");
+			client.AddDefaultHeader("Authorization", AuthorizationData.AccessToken);
+
+			var lineItems = new StringBuilder();
+			lineItems.Append("[");
+			var firstRow = true;
+			foreach (var lineItem in order.LineItems)
+			{
+				if (!firstRow) { 
+					lineItems.Append(","); 
+				}
+				else { 
+					firstRow = false; 
+				}
+				lineItems.Append("{ \"index\": \"" + lineItem.Index + "\", \"quantity\": \"" + lineItem.Quantity.ToString() + "\" }");
+
+			}
+			lineItems.Append("]");
+
+			var request = new RestRequest();
+			var crappyJson = "{\"fulfillment\": {\"lineItems\": " + lineItems.ToString() + ", \"trackingInfo\": { \"shippingProvider\": \"mycar\", \"trackingNumber\": \"1234\", \"trackingLink\": \"none\"  } }}";
+			PrintVerboseConsole(crappyJson);
+			request.AddStringBody(crappyJson, "application/json");
+			request.Method = Method.Post;
+
+			PrintVerboseConsole("Will try to update order");
+			var response = client.Post(request);
+
+			if (response == null || response.StatusCode == HttpStatusCode.BadRequest)
+			{
+				PrintVerboseConsole($"No fullfilled order {order.Id}");
+			}
+			else
+			{
+				PrintVerboseConsole($"Set {order.Id} to fullfilled");
+			}
+		}
+
 		private static void CreateJsonFile(string name, string content)
 		{
 			var path = $"{DataFolder}\\{NextSaturday.ToString("yyyy")}v{Week}_{name}.json";
@@ -424,9 +619,16 @@ namespace FrukostFrallanCLI
 
 		private static void CreateFile(string path, string content)
 		{
-			File.WriteAllText(path, content);
+			try
+			{
+				File.WriteAllText(path, content);
 
-			PrintVerboseConsole($"Created file {path}");
+				PrintVerboseConsole($"Created file {path}");
+			}
+			catch (DirectoryNotFoundException dirEx)
+			{
+				PrintVerboseConsole($"Could not create file {path}");
+			}
 		}
 
 		private static string LoadFileContent(string path)
@@ -469,7 +671,7 @@ namespace FrukostFrallanCLI
 				File.Delete(path);
 				PrintVerboseConsole($"Deleted file {path}.");
 			}
-			
+
 			using (StreamWriter sw = File.CreateText(path))
 			{
 				sw.WriteLine($"Frukostfrallan beställning v{Week} ({NextSaturday.ToString("yyyy-MM-dd")})");
@@ -582,7 +784,9 @@ namespace FrukostFrallanCLI
 			{
 				//PrintVerboseConsole(response.Content);
 				CreateJsonFile($"product_{productId}", response.Content);
-				product = JsonConvert.DeserializeObject<Product>(response.Content);
+				//product = JsonConvert.DeserializeObject<Product>(response.Content);
+				JObject obj = JObject.Parse(response.Content);
+				product = obj["product"].ToObject<Product>();
 
 				if (product != null)
 				{
@@ -593,12 +797,49 @@ namespace FrukostFrallanCLI
 							product.Collections.Add(collection);
 						}
 					}
+
+					if (product.Collections.Any(x => x.Name == "Bröd" || x.Name == "Fikabröd" || x.Name == "Frukostfralla" || x.Name == "Limpor" || x.Name == "Längd"))
+					{
+						product.BakeryProduct = true;
+					}
 				}
 			}
 
 			Console.Write(".");
 
 			return product;
+		}
+
+		private static Order GetOrder(string orderId)
+		{
+			var order = default(Order);
+			var url = $"https://www.wixapis.com/stores/v2/orders/{orderId}";
+
+			var client = new RestClient(url);
+			client.AddDefaultHeader("Accept", "application/json;");
+			client.AddDefaultHeader("Authorization", AuthorizationData.AccessToken);
+
+			PrintVerboseConsole($"Will try to get order {orderId}");
+			var response = client.Get(new RestRequest());
+
+			if (response == null)
+			{
+				Console.WriteLine("No order");
+			}
+			else
+			{
+				//PrintVerboseConsole(response.Content);
+				CreateJsonFile($"order_{orderId}", response.Content);
+				//product = JsonConvert.DeserializeObject<Product>(response.Content);
+				JObject obj = JObject.Parse(response.Content);
+				order = obj["order"].ToObject<Order>();
+
+				
+			}
+
+			Console.Write(".");
+
+			return order;
 		}
 
 		private static void GetCollections()
@@ -717,9 +958,9 @@ namespace FrukostFrallanCLI
 				var line = bakeryOrder.BakeryOrderLines.FirstOrDefault(x => x.Name == lineItem.Name);
 				if (line == null)
 				{
-					line = new BakeryOrderLine { 
-						Name = lineItem.Name, 
-						Price = lineItem.PriceSum,  
+					line = new BakeryOrderLine {
+						Name = lineItem.Name,
+						Price = lineItem.PriceSum,
 						Quantity = lineItem.Quantity,
 						TotalPrice = lineItem.TotalPriceSum
 					};
@@ -727,14 +968,15 @@ namespace FrukostFrallanCLI
 					var product = GetProduct(lineItem.ProductId);
 					if (product != null)
 					{
-						if (product.Collections.Any(x => x.Name == "Bröd" || x.Name == "Fikabröd" || x.Name == "Frukostfralla" || x.Name == "Limpor" || x.Name == "Längd"))
+						//if (product.Collections.Any(x => x.Name == "Bröd" || x.Name == "Fikabröd" || x.Name == "Frukostfralla" || x.Name == "Limpor" || x.Name == "Längd"))
+						if (product.BakeryProduct)
 						{
 							line.BakeryProduct = true;
 						}
 					}
 
 					bakeryOrder.BakeryOrderLines.Add(line);
-				} 
+				}
 				else
 				{
 					line.Quantity = line.Quantity + lineItem.Quantity;
@@ -768,7 +1010,7 @@ namespace FrukostFrallanCLI
 				mapSortedOrders = HandleSplitDelivery(mapSortedOrders);
 			}
 
-			return mapSortedOrders; 
+			return mapSortedOrders;
 		}
 
 		private static void HandlePostalArea(List<Order> mapSortedOrders, List<Order> orders, string postalNumber)
@@ -931,6 +1173,40 @@ namespace FrukostFrallanCLI
 		public int TotalResults { get; set; }
 	}
 
+	public class ProductQueryResult
+	{
+		public ProductQueryResult()
+		{
+			TotalResults = 0;
+		}
+
+		[JsonProperty(PropertyName = "products")]
+		public List<Product> Products { get; set; }
+
+		[JsonProperty(PropertyName = "metadata")]
+		public MetaData? Metadata { get; set; }
+
+		[JsonProperty(PropertyName = "totalResults")]
+		public int TotalResults { get; set; }
+	}
+
+	public class InventoryQueryResult
+	{
+		public InventoryQueryResult()
+		{
+			TotalResults = 0;
+		}
+
+		[JsonProperty(PropertyName = "inventoryItems")]
+		public List<InventoryItem> InventoryItems { get; set; }
+
+		[JsonProperty(PropertyName = "metadata")]
+		public MetaData? Metadata { get; set; }
+
+		[JsonProperty(PropertyName = "totalResults")]
+		public int TotalResults { get; set; }
+	}
+
 	public class MetaData
 	{
 		public MetaData()
@@ -962,6 +1238,7 @@ namespace FrukostFrallanCLI
 			//ZipCode = string.Empty;
 			//City = string.Empty;
 			//Phone = string.Empty;
+			fulfillments = new List<Fulfillment>();
 		}
 
 		[JsonProperty(PropertyName = "id")]
@@ -985,6 +1262,9 @@ namespace FrukostFrallanCLI
 		[JsonProperty(PropertyName = "lineItems")]
 		public List<LineItem> LineItems { get; set; }
 
+
+		[JsonProperty(PropertyName = "fulfillments")]
+		public IList<Fulfillment> fulfillments { get; set; }
 		//[JsonIgnore]
 		//public string AddressLine1
 		//{
@@ -1015,6 +1295,21 @@ namespace FrukostFrallanCLI
 		//	get => ShippingInfo.ShipmentDetails.Address.Phone; 
 		//	set => Phone = value;
 		//}
+	}
+
+	public class Fulfillment
+	{
+		public Fulfillment()
+		{
+			Id = string.Empty;
+			DateCreated = string.Empty;
+		}
+
+		[JsonProperty(PropertyName = "id")]
+		public string Id { get; set; }
+
+		[JsonProperty(PropertyName = "dateCreated")]
+		public string DateCreated { get; set; }
 	}
 
 	public class Totals
@@ -1154,8 +1449,8 @@ namespace FrukostFrallanCLI
 		public int Quantity { get; set; }
 
 		[JsonIgnore]
-		public string QuantityString 
-		{ 
+		public string QuantityString
+		{
 			get {
 				var result = string.Empty;
 
@@ -1171,7 +1466,7 @@ namespace FrukostFrallanCLI
 				}
 
 				return result;
-			} 
+			}
 		}
 
 		public int Price { get; set; }
@@ -1194,6 +1489,7 @@ namespace FrukostFrallanCLI
 			Brand = string.Empty;
 
 			Collections = new List<Collection>();
+			Stock = new Stock();
 		}
 
 		[JsonProperty(PropertyName = "id")]
@@ -1217,11 +1513,37 @@ namespace FrukostFrallanCLI
 		[JsonIgnore]
 		public List<Collection> Collections { get; set; }
 
+		[JsonProperty(PropertyName = "stock")]
+		public Stock Stock { get; set; }
+
+		[JsonIgnore]
+		public bool BakeryProduct { get; set; }
 		//"customTextFields": [  {
 		//	"title": "What would you like us to print on the custom label?",
 		//	"maxLength": 200,
 		//	"mandatory": false
 		//  }],
+	}
+
+	public class Stock
+	{
+		public Stock()
+		{
+			Quantity = 0;
+			InventoryStatus = string.Empty;
+		}
+
+		[JsonProperty(PropertyName = "trackInventory")]
+		public bool TrackInventory { get; set; }
+
+		[JsonProperty(PropertyName = "quantity")]
+		public int Quantity { get; set; }
+
+		/// <summary>
+		/// InventoryStatus... Supported values: IN_STOCK, OUT_OF_STOCK, PARTIALLY_OUT_OF_STOCK
+		/// </summary>
+		[JsonProperty(PropertyName = "inventoryStatus")]
+		public string InventoryStatus { get; set; }
 	}
 
 	public class Collection
@@ -1237,5 +1559,32 @@ namespace FrukostFrallanCLI
 
 		[JsonProperty(PropertyName = "name")]
 		public string Name { get; set; }
+	}
+
+	public class InventoryItem
+	{
+		public InventoryItem()
+		{
+			Id = string.Empty;
+			ProductId = string.Empty;
+			LastUpdated = string.Empty;
+			NumericId = string.Empty;
+		}
+
+		[JsonProperty(PropertyName = "id")]
+		public string Id { get; set; }
+
+		[JsonProperty(PropertyName = "productId")]
+		public string ProductId { get; set; }
+
+		[JsonProperty(PropertyName = "trackQuantity")]
+		public bool TrackQuantity { get; set; }
+
+		[JsonProperty(PropertyName = "lastUpdated")]
+		public string LastUpdated { get; set; }
+
+		[JsonProperty(PropertyName = "numericId")]
+		public string NumericId { get; set; }
+
 	}
 }
