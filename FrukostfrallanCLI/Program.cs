@@ -46,7 +46,7 @@ namespace FrukostFrallanCLI
 
 			if (args.Length == 0)
 			{
-				Console.WriteLine($"Invalid args. -prep/-sort/-close/-open");
+				Console.WriteLine($"Invalid args. -preporders/-sortorders/-closeshop/-openshop/-closeorders");
 				return;
 			}
 
@@ -56,7 +56,7 @@ namespace FrukostFrallanCLI
 
 			switch (command)
 			{
-				case "-prep":
+				case "-preporders":
 					CreateFolders();
 					if (args.Length > 1 && args[1].StartsWith("OAUTH2."))
 					{
@@ -76,7 +76,7 @@ namespace FrukostFrallanCLI
 					PrepDelivery();
 
 					break;
-				case "-sort":
+				case "-sortorders":
 					if (args.Any("-noprintpdf".Contains))
 					{
 						NoPrintPdf = true;
@@ -87,7 +87,7 @@ namespace FrukostFrallanCLI
 					}
 					SortDelivery();
 					break;
-				case "-close":
+				case "-closeshop":
 					if (args.Any("-verbose".Contains))
 					{
 						PrintVerbose = true;
@@ -95,13 +95,21 @@ namespace FrukostFrallanCLI
 
 					CloseShop();
 					break;
-				case "-open":
+				case "-openshop":
 					if (args.Any("-verbose".Contains))
 					{
 						PrintVerbose = true;
 					}
 
 					OpenShop();
+					break;
+				case "-closeorders":
+					if (args.Any("-verbose".Contains))
+					{
+						PrintVerbose = true;
+					}
+
+					CloseOrders();
 					break;
 				default:
 					Console.WriteLine("ERROR: Invalid command");
@@ -277,6 +285,24 @@ namespace FrukostFrallanCLI
 			}
 			PrintVerboseConsole("Shop is now open");
 
+			//// Set all none fullfilled orders to fullfilled.
+			//var orders = ListNotFullfilledOrders();
+			//foreach (var order in orders)
+			//{
+			//	UpdateOrderToFullfilled(order);
+			//}
+			//PrintVerboseConsole("All none fullfilled orders set to fullfilled");
+
+			PrintVerboseConsole("--** Jobs done **--");
+		}
+
+		private static void CloseOrders()
+		{
+			Console.WriteLine("Start close orders");
+
+			Authorize();
+			GetCollections();
+
 			// Set all none fullfilled orders to fullfilled.
 			var orders = ListNotFullfilledOrders();
 			foreach (var order in orders)
@@ -284,9 +310,6 @@ namespace FrukostFrallanCLI
 				UpdateOrderToFullfilled(order);
 			}
 			PrintVerboseConsole("All none fullfilled orders set to fullfilled");
-			//var order = GetOrder("db9202a5-03de-497b-92ca-e6a8e9e2d9fa");
-			//var order = GetOrder("814d5b09-585e-4b37-a338-0714b81e3961");
-			//UpdateOrderToFullfilled(order);
 
 			PrintVerboseConsole("--** Jobs done **--");
 		}
