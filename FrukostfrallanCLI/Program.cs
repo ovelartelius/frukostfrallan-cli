@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using RestSharp;
+using System.CommandLine.NamingConventionBinder;
+using System.CommandLine;
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -13,7 +15,7 @@ using System.Text;
 
 namespace FrukostFrallanCLI
 {
-	class Program
+	public class Program
 	{
 		private static string tokenGenUrl = "https://www.wix.com/installer/install?appId=27b14e39-c86f-49b0-b8b5-856238332649&redirectUrl=https://example.com";
 		private static string clientId = "27b14e39-c86f-49b0-b8b5-856238332649";
@@ -31,7 +33,7 @@ namespace FrukostFrallanCLI
 		private static readonly HttpClient _httpClient = new HttpClient();
 		private static bool NoDownload = false;
 		private static bool NoPrintPdf = false;
-		private static bool PrintVerbose = false;
+		private static bool PrintVerbose = true;
 		private static CollectionQueryResult Collections = new CollectionQueryResult();
 
 		static void Main(string[] args)
@@ -44,83 +46,195 @@ namespace FrukostFrallanCLI
 			clientSecret = config["ClientSecret"];
 			RootFolder = config["RootFolder"];
 
-			if (args.Length == 0)
-			{
-				Console.WriteLine($"Invalid args. -preporders/-sortorders/-closeshop/-openshop/-closeorders");
-				return;
-			}
+			//if (args.Length == 0)
+			//{
+			//	Console.WriteLine($"Invalid args. -preporders/-sortorders/-closeshop/-openshop/-closeorders");
+			//	return;
+			//}
 
-			var command = args[0];
-			//RootFolder = @"F:\OneDrive\Dokument\Privat\Frukostfrallan";
+			//var command = args[0];
 			SetDefaultValues();
 
-			switch (command)
+			var prepordersCommand = new Command("preporders", "Preperation of orders.")
+					{
+						new Option<string>(new[] { "--token", "-t" }, "Token that should be used to connect to wix.com."),
+						new Option<bool>(new[] { "--nodownload", "-nd" }, "Will not download content/pdf from wix.com."),
+						new Option<bool>(new[] { "--verbose", "-v" }, "Show everything.")
+					};
+			prepordersCommand.Handler = CommandHandler.Create<string, bool, bool, IConsole>(HandlePrepOrders);
+
+			var sortordersCommand = new Command("sortorders", "Sort orders after Google map order.")
+					{
+						new Option<string>(new[] { "--noprintpdf", "-p" }, "Will not open PDF for print."),
+						new Option<bool>(new[] { "--verbose", "-v" }, "Show everything.")
+					};
+			sortordersCommand.Handler = CommandHandler.Create<bool, bool, IConsole>(HandleSortOrders);
+
+			var closeshopCommand = new Command("closeshop", "Make sure to unpublish all bread products / close shop.")
+					{
+						new Option<bool>(new[] { "--verbose", "-v" }, "Show everything.")
+					};
+			closeshopCommand.Handler = CommandHandler.Create<bool, IConsole>(HandleCloseShop);
+
+			var openshopCommand = new Command("openshop", "Publish all bread products / open shop.")
+					{
+						new Option<bool>(new[] { "--verbose", "-v" }, "Show everything.")
+					};
+			openshopCommand.Handler = CommandHandler.Create<bool, IConsole>(HandleOpenShop);
+
+			var closeordersCommand = new Command("closeorders", "Close all open orders.")
+					{
+						new Option<bool>(new[] { "--verbose", "-v" }, "Show everything.")
+					};
+			closeordersCommand.Handler = CommandHandler.Create<bool, IConsole>(HandleCloseOrders);
+
+
+			var cmd = new RootCommand("Frukostfrallan CLI")
 			{
-				case "-preporders":
-					CreateFolders();
-					if (args.Length > 1 && args[1].StartsWith("OAUTH2."))
-					{
-						token = args[1].ToString();
-					}
+				prepordersCommand,
+				sortordersCommand,
+				closeshopCommand,
+				openshopCommand,
+				closeordersCommand
+			};
 
-					if (args.Any("-nodownload".Contains))
-					{
-						NoDownload = true;
-					}
 
-					if (args.Any("-verbose".Contains))
-					{
-						PrintVerbose = true;
-					}
-
-					PrepDelivery();
-
-					break;
-				case "-sortorders":
-					if (args.Any("-noprintpdf".Contains))
-					{
-						NoPrintPdf = true;
-					}
-					if (args.Any("-verbose".Contains))
-					{
-						PrintVerbose = true;
-					}
-					SortDelivery();
-					break;
-				case "-closeshop":
-					if (args.Any("-verbose".Contains))
-					{
-						PrintVerbose = true;
-					}
-
-					CloseShop();
-					break;
-				case "-openshop":
-					if (args.Any("-verbose".Contains))
-					{
-						PrintVerbose = true;
-					}
-
-					OpenShop();
-					break;
-				case "-closeorders":
-					if (args.Any("-verbose".Contains))
-					{
-						PrintVerbose = true;
-					}
-
-					CloseOrders();
-					break;
-				default:
-					Console.WriteLine("ERROR: Invalid command");
-					break;
-			}
-
+			cmd.Invoke(args);
 
 			Console.WriteLine("");
 			Console.WriteLine("Press any key to exit....");
 			Console.ReadKey();
 		}
+
+		private static void HandlePrepOrders(string connectionToken, bool nodownload, bool verbose, IConsole console)
+		{
+			console.WriteLine($"HandlePrepOrders.");
+			PrintVerboseConsole($"HandlePrepOrders..");
+
+			CreateFolders();
+			if (!string.IsNullOrEmpty(connectionToken))
+			{
+				token = connectionToken;
+				PrintVerboseConsole($"Set token from argument. {token}");
+			}
+			NoDownload = nodownload;
+			PrintVerbose = verbose;
+			PrepDelivery();
+		}
+
+		private static void HandleSortOrders(bool noprintpdf, bool verbose, IConsole console)
+		{
+			NoPrintPdf = noprintpdf;
+			PrintVerbose = verbose;
+			SortDelivery();
+		}
+
+		private static void HandleCloseShop(bool verbose, IConsole console)
+		{
+			PrintVerbose = verbose;
+			CloseShop();
+		}
+
+		private static void HandleOpenShop(bool verbose, IConsole console)
+		{
+			PrintVerbose = verbose;
+			OpenShop();
+		}
+
+		private static void HandleCloseOrders(bool verbose, IConsole console)
+		{
+			PrintVerbose = verbose;
+			CloseOrders();
+		}
+
+
+		//static void Main(string[] args)
+		//{
+		//	var builder = new ConfigurationBuilder()
+		//		   .AddJsonFile($"appsettings.json", true, true);
+
+		//	var config = builder.Build();
+		//	clientId = config["ClientId"];
+		//	clientSecret = config["ClientSecret"];
+		//	RootFolder = config["RootFolder"];
+
+		//	if (args.Length == 0)
+		//	{
+		//		Console.WriteLine($"Invalid args. -preporders/-sortorders/-closeshop/-openshop/-closeorders");
+		//		return;
+		//	}
+
+		//	var command = args[0];
+		//	//RootFolder = @"F:\OneDrive\Dokument\Privat\Frukostfrallan";
+		//	SetDefaultValues();
+
+		//	switch (command)
+		//	{
+		//		case "-preporders":
+		//			CreateFolders();
+		//			if (args.Length > 1 && args[1].StartsWith("OAUTH2."))
+		//			{
+		//				token = args[1].ToString();
+		//			}
+
+		//			if (args.Any("-nodownload".Contains))
+		//			{
+		//				NoDownload = true;
+		//			}
+
+		//			if (args.Any("-verbose".Contains))
+		//			{
+		//				PrintVerbose = true;
+		//			}
+
+		//			PrepDelivery();
+
+		//			break;
+		//		case "-sortorders":
+		//			if (args.Any("-noprintpdf".Contains))
+		//			{
+		//				NoPrintPdf = true;
+		//			}
+		//			if (args.Any("-verbose".Contains))
+		//			{
+		//				PrintVerbose = true;
+		//			}
+		//			SortDelivery();
+		//			break;
+		//		case "-closeshop":
+		//			if (args.Any("-verbose".Contains))
+		//			{
+		//				PrintVerbose = true;
+		//			}
+
+		//			CloseShop();
+		//			break;
+		//		case "-openshop":
+		//			if (args.Any("-verbose".Contains))
+		//			{
+		//				PrintVerbose = true;
+		//			}
+
+		//			OpenShop();
+		//			break;
+		//		case "-closeorders":
+		//			if (args.Any("-verbose".Contains))
+		//			{
+		//				PrintVerbose = true;
+		//			}
+
+		//			CloseOrders();
+		//			break;
+		//		default:
+		//			Console.WriteLine("ERROR: Invalid command");
+		//			break;
+		//	}
+
+
+		//	Console.WriteLine("");
+		//	Console.WriteLine("Press any key to exit....");
+		//	Console.ReadKey();
+		//}
 
 		private static void CreateFolders()
 		{
@@ -129,6 +243,9 @@ namespace FrukostFrallanCLI
 			{
 				Console.WriteLine($"ERROR: RootFolder to Frukostfrallan {RootFolder} does not exist. Cancel prep.");
 				return;
+			} else
+			{
+				PrintVerboseConsole($"RootFolder {RootFolder} found.");
 			}
 			CreateFolder(WeekFolder, "WeekFolder");
 			CreateFolder(PackingSlipFolder, "PackingSlipFolder");
@@ -394,17 +511,18 @@ namespace FrukostFrallanCLI
 
 		private static void SetDefaultValues()
 		{
+			PrintVerboseConsole($"Set the following variables...");
 			NextSaturday = GetNextSaturday();
-			Console.WriteLine($"Next saturday: {NextSaturday.ToString("yyyy-MM-dd")}");
+			Console.WriteLine($"Next saturday:		{NextSaturday.ToString("yyyy-MM-dd")}");
 			Week = System.Globalization.ISOWeek.GetWeekOfYear(NextSaturday);
-			Console.WriteLine($"Week: {Week}");
-			Console.WriteLine($"RootFolder: {RootFolder}");
+			Console.WriteLine($"Week:			{Week}");
+			Console.WriteLine($"RootFolder:		{RootFolder}");
 			WeekFolder = $"{RootFolder}\\{NextSaturday.ToString("yyyy")}v{Week}";
-			Console.WriteLine($"WeekFolder: {WeekFolder}");
+			Console.WriteLine($"WeekFolder:		{WeekFolder}");
 			PackingSlipFolder = $"{WeekFolder}\\packingSlips";
-			PrintVerboseConsole($"PackingSlipsFolder: {PackingSlipFolder}");
+			PrintVerboseConsole($"PackingSlipsFolder:	{PackingSlipFolder}");
 			DataFolder = $"{WeekFolder}\\data";
-			PrintVerboseConsole($"DataFolder: {DataFolder}");
+			PrintVerboseConsole($"DataFolder:		{DataFolder}");
 
 			accessTokenPath = $"{RootFolder}\\access.token";
 			refreshTokenPath = $"{RootFolder}\\refresh.token";
@@ -459,7 +577,7 @@ namespace FrukostFrallanCLI
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine($"Access denied. Will try with refresh token."); // Ex: {ex.Message}");
+				Console.WriteLine($"Access denied. Will try with refresh token. {ex.Message}"); // Ex: {ex.Message}");
 													  //Console.WriteLine($"{tokenGenUrl}"); // Ex: {ex.Message}");
 				RefreshToken();
 				return;
