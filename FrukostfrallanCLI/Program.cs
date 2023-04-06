@@ -34,6 +34,7 @@ namespace FrukostFrallanCLI
 		private static bool NoDownload = false;
 		private static bool NoPrintPdf = false;
 		private static bool PrintVerbose = true;
+		private static string PrinterName = @"";
 		private static CollectionQueryResult Collections = new CollectionQueryResult();
 
 		static void Main(string[] args)
@@ -45,6 +46,7 @@ namespace FrukostFrallanCLI
 			clientId = config["ClientId"];
 			clientSecret = config["ClientSecret"];
 			RootFolder = config["RootFolder"];
+			PrinterName = config["PrinterName"];
 
 			//if (args.Length == 0)
 			//{
@@ -147,94 +149,6 @@ namespace FrukostFrallanCLI
 			CloseOrders();
 		}
 
-
-		//static void Main(string[] args)
-		//{
-		//	var builder = new ConfigurationBuilder()
-		//		   .AddJsonFile($"appsettings.json", true, true);
-
-		//	var config = builder.Build();
-		//	clientId = config["ClientId"];
-		//	clientSecret = config["ClientSecret"];
-		//	RootFolder = config["RootFolder"];
-
-		//	if (args.Length == 0)
-		//	{
-		//		Console.WriteLine($"Invalid args. -preporders/-sortorders/-closeshop/-openshop/-closeorders");
-		//		return;
-		//	}
-
-		//	var command = args[0];
-		//	//RootFolder = @"F:\OneDrive\Dokument\Privat\Frukostfrallan";
-		//	SetDefaultValues();
-
-		//	switch (command)
-		//	{
-		//		case "-preporders":
-		//			CreateFolders();
-		//			if (args.Length > 1 && args[1].StartsWith("OAUTH2."))
-		//			{
-		//				token = args[1].ToString();
-		//			}
-
-		//			if (args.Any("-nodownload".Contains))
-		//			{
-		//				NoDownload = true;
-		//			}
-
-		//			if (args.Any("-verbose".Contains))
-		//			{
-		//				PrintVerbose = true;
-		//			}
-
-		//			PrepDelivery();
-
-		//			break;
-		//		case "-sortorders":
-		//			if (args.Any("-noprintpdf".Contains))
-		//			{
-		//				NoPrintPdf = true;
-		//			}
-		//			if (args.Any("-verbose".Contains))
-		//			{
-		//				PrintVerbose = true;
-		//			}
-		//			SortDelivery();
-		//			break;
-		//		case "-closeshop":
-		//			if (args.Any("-verbose".Contains))
-		//			{
-		//				PrintVerbose = true;
-		//			}
-
-		//			CloseShop();
-		//			break;
-		//		case "-openshop":
-		//			if (args.Any("-verbose".Contains))
-		//			{
-		//				PrintVerbose = true;
-		//			}
-
-		//			OpenShop();
-		//			break;
-		//		case "-closeorders":
-		//			if (args.Any("-verbose".Contains))
-		//			{
-		//				PrintVerbose = true;
-		//			}
-
-		//			CloseOrders();
-		//			break;
-		//		default:
-		//			Console.WriteLine("ERROR: Invalid command");
-		//			break;
-		//	}
-
-
-		//	Console.WriteLine("");
-		//	Console.WriteLine("Press any key to exit....");
-		//	Console.ReadKey();
-		//}
 
 		private static void CreateFolders()
 		{
@@ -345,7 +259,27 @@ namespace FrukostFrallanCLI
 					if (order.Number != 0)
 					{
 						var pdfPath = $"{PackingSlipFolder}\\{order.Number}.pdf";
-						OpenUrl(pdfPath);
+
+						if (string.IsNullOrEmpty(PrinterName))
+						{
+							
+							OpenUrl(pdfPath);
+						}
+						else
+						{
+							Process process = new Process();
+							process.StartInfo.FileName = "AcroRd32.exe";
+							process.StartInfo.Arguments = $@"/t ""{pdfPath}"" ""{PrinterName}""";
+							process.StartInfo.CreateNoWindow = true;
+							process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+							process.Start();
+							process.WaitForInputIdle();
+							System.Threading.Thread.Sleep(3000); // Wait for 3 seconds to complete printing
+							if (!process.CloseMainWindow())
+							{
+								process.Kill();
+							}
+						}
 					}
 				}
 			}
