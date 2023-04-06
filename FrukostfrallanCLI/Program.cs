@@ -268,7 +268,7 @@ namespace FrukostFrallanCLI
 						else
 						{
 							Process process = new Process();
-							process.StartInfo.FileName = "AcroRd32.exe";
+							process.StartInfo.FileName = @"C:\Program Files (x86)\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe";
 							process.StartInfo.Arguments = $@"/t ""{pdfPath}"" ""{PrinterName}""";
 							process.StartInfo.CreateNoWindow = true;
 							process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
