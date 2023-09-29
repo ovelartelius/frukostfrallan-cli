@@ -240,9 +240,27 @@ namespace FrukostFrallanCLI
 				if (line.StartsWith(",+Järfälla/"))
 				{
 					var addressLine1 = line.Replace(",+Järfälla/", "");
-					var order = orders.First(x => x.ShippingInfo.ShipmentDetails.Address.AddressLine1 == addressLine1);
-					sortOrders.Add(order);
-				}
+					try
+					{
+                        var order = orders.FirstOrDefault(x => x.ShippingInfo.ShipmentDetails.Address.AddressLine1 == addressLine1);
+						if (order == null)
+						{
+                            Console.WriteLine($"Could not find '{addressLine1}' in the orders json!");
+                            // Will try to load with start with
+                            order = orders.FirstOrDefault(x => x.ShippingInfo.ShipmentDetails.Address.AddressLine1.StartsWith(addressLine1));
+							if (order != null)
+							{
+                                Console.WriteLine($"Find '{addressLine1}' with startswith!");
+                            }
+                        }
+                        sortOrders.Add(order);
+                    }
+					catch (Exception ex)
+					{
+                        Console.WriteLine($"Order '{addressLine1}' needs to be manuall checked! Can not find address.");
+                    }
+
+                }
 				else if (string.IsNullOrEmpty(line))
 				{
 					var emptyOrder = new Order();
@@ -254,7 +272,10 @@ namespace FrukostFrallanCLI
 
 			if (!NoPrintPdf)
 			{
-				foreach (var order in sortOrders)
+				var printOrders = sortOrders;
+                printOrders.Reverse();
+
+                foreach (var order in printOrders)
 				{
 					if (order.Number != 0)
 					{
@@ -330,19 +351,16 @@ namespace FrukostFrallanCLI
 				if (product.BakeryProduct)
 				{
 					UpdateInventoryItemInStock(product.Id, true);
-					PrintVerboseConsole($"Set {product.Id} {product.Name} in stock");
+					if (PrintVerbose)
+					{
+                        PrintVerboseConsole($"Set {product.Id} {product.Name} in stock");
+                    } else
+					{
+                        Console.Write(".");
+                    }
 				}
-
 			}
 			PrintVerboseConsole("Shop is now open");
-
-			//// Set all none fullfilled orders to fullfilled.
-			//var orders = ListNotFullfilledOrders();
-			//foreach (var order in orders)
-			//{
-			//	UpdateOrderToFullfilled(order);
-			//}
-			//PrintVerboseConsole("All none fullfilled orders set to fullfilled");
 
 			PrintVerboseConsole("--** Jobs done **--");
 		}
@@ -359,7 +377,14 @@ namespace FrukostFrallanCLI
 			foreach (var order in orders)
 			{
 				UpdateOrderToFullfilled(order);
-			}
+				if (PrintVerbose)
+				{
+                    PrintVerboseConsole($"Set {order.Number} to fullfilled");
+                } else
+				{
+                    Console.Write(".");
+                }
+            }
 			PrintVerboseConsole("All none fullfilled orders set to fullfilled");
 
 			PrintVerboseConsole("--** Jobs done **--");
@@ -756,7 +781,7 @@ namespace FrukostFrallanCLI
 				sw.WriteLine("Följande produkter vill vi beställa. Om ni har några frågetecken maila eller ring så läser vi det.");
 				sw.WriteLine("");
 				sw.WriteLine("-----------------------");
-				foreach (var line in bakeryOrder.BakeryOrderLines.Where(x => x.BakeryProduct).ToList())
+				foreach (var line in bakeryOrder.BakeryOrderLines.Where(x => x.BakeryProduct).ToList().OrderBy(x => x.Price))
 				{
 					sw.WriteLine($"{line.QuantityString} st {line.Name}");
 				}
@@ -792,7 +817,7 @@ namespace FrukostFrallanCLI
 
 			using (StreamWriter sw = File.CreateText(path))
 			{
-				foreach (var line in bakeryOrder.BakeryOrderLines.ToList())
+				foreach (var line in bakeryOrder.BakeryOrderLines.ToList().OrderBy(x => x.Price))
 				{
 					sw.WriteLine($"{line.Name}; {line.Quantity}; {line.TotalPrice}; {line.Price}; {line.BakeryProduct}");
 				}
