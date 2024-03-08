@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Reflection;
 
 namespace FrukostFrallanCLI
 {
@@ -48,14 +49,30 @@ namespace FrukostFrallanCLI
 			RootFolder = config["RootFolder"];
 			PrinterName = config["PrinterName"];
 
-			//if (args.Length == 0)
-			//{
-			//	Console.WriteLine($"Invalid args. -preporders/-sortorders/-closeshop/-openshop/-closeorders");
-			//	return;
-			//}
+			try
+			{
+                var assemblyFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                var parentFolder = Directory.GetParent(assemblyFolder);
+				if (parentFolder != null)
+				{
+                    var parentFolderPath = parentFolder.FullName;
+                    // If the folder has a access.token file we know it is right. If not we will take the value from config.
+                    if (File.Exists($"{parentFolderPath}\\access.token"))
+                    {
+                        RootFolder = parentFolderPath;
+                    }
+                }
+            }
+			catch { }
 
-			//var command = args[0];
-			SetDefaultValues();
+            //if (args.Length == 0)
+            //{
+            //	Console.WriteLine($"Invalid args. -preporders/-sortorders/-closeshop/-openshop/-closeorders");
+            //	return;
+            //}
+
+            //var command = args[0];
+            SetDefaultValues();
 
 			var prepordersCommand = new Command("preporders", "Preperation of orders.")
 					{
